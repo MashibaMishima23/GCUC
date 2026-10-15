@@ -10,7 +10,7 @@ function getStars(score) {
 
 function getPeriodTeacherEvaluations(periodId, teacherId) {
   return MOCK_EVALUATIONS.filter(evaluation =>
-    evaluation.period_id == periodId && evaluation.teacher_id == teacherId
+    evaluation.period_id == periodId && (teacherId == null || evaluation.teacher_id == teacherId)
   )
 }
 
