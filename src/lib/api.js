@@ -1,5 +1,6 @@
 import * as mock from './mockApi'
 import { getMockStarRatings, getMockTeacherRatingDetails } from './mockRatings'
+import { getMockTeacherEvaluationDetails } from './mockResults'
 
 let archiveHistory = []
 let archiveFiles = []
@@ -130,7 +131,9 @@ async function request(method, url, body, config = {}) {
 	if (parts[0] === 'evaluations' && parts[1] === 'periods' && parts[3] === 'toggle' && method === 'PATCH') return mock.toggleEvaluationPeriod(periodId)
 	if (parts[0] === 'evaluations' && parts[1] === 'periods' && parts[3] === 'schedules' && method === 'PUT') return result({ message: 'Schedules updated' })
 	if (parts[0] === 'evaluations' && parts[1] === 'periods' && periodId && method === 'PUT') return mock.updateEvaluationPeriod(periodId, body)
-	if (parts[0] === 'evaluations' && parts[1] === 'my-results' && parts[3] === 'details' && method === 'GET') return mock.getMyEvaluationResults()
+	if (parts[0] === 'evaluations' && parts[1] === 'my-results' && parts[3] === 'details' && method === 'GET') {
+		return result(getMockTeacherEvaluationDetails(periodId, currentUser()?.id))
+	}
 	if (path === 'evaluations/submit' && method === 'POST') return mock.submitEvaluation(body)
 
 	if (path === 'reports' && method === 'GET') return mock.getReports()

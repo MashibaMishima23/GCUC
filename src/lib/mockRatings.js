@@ -1,4 +1,5 @@
-import { MOCK_EVALUATIONS, MOCK_PERIODS, MOCK_QUESTIONNAIRES, MOCK_USERS } from '../data/mockData'
+import { MOCK_PERIODS, MOCK_QUESTIONNAIRES, MOCK_USERS } from '../data/mockData'
+import { MOCK_EVALUATIONS_WITH_SUBJECT_SAMPLES } from './mockResults'
 
 function getStars(score) {
   if (score >= 4.5) return 5
@@ -9,7 +10,7 @@ function getStars(score) {
 }
 
 function getPeriodTeacherEvaluations(periodId, teacherId) {
-  return MOCK_EVALUATIONS.filter(evaluation =>
+  return MOCK_EVALUATIONS_WITH_SUBJECT_SAMPLES.filter(evaluation =>
     evaluation.period_id == periodId && (teacherId == null || evaluation.teacher_id == teacherId)
   )
 }
