@@ -9,6 +9,34 @@ const currentUser = () => {
 	catch { return null }
 }
 
+async function getTeacherEvaluationScores() {
+	const response = await mock.getReports()
+	const teacherId = currentUser()?.id
+	const studentReports = response.data.filter(report =>
+		report.report_type === 'individual' && report.teacher_id === teacherId
+	)
+	const summarize = reports => ({
+		overall_avg: reports.length
+			? (reports.reduce((sum, report) => sum + Number(report.average_score || 0), 0) / reports.length).toFixed(2)
+			: '0.00',
+		total_evaluations: reports.reduce((sum, report) => sum + Number(report.total_evaluations || 0), 0),
+		total_evaluators: reports.reduce((sum, report) => sum + Number(report.total_evaluations || 0), 0),
+		periods: reports.map(report => ({
+			period_title: report.period_title,
+			semester: report.semester,
+			school_year: report.school_year,
+			avg_score: report.average_score,
+			evaluation_count: report.total_evaluations,
+			evaluator_count: report.total_evaluations,
+		})),
+	})
+
+	return result({
+		student_evaluations: summarize(studentReports),
+		peer_evaluations: summarize([]),
+	})
+}
+
 async function request(method, url, body, config = {}) {
 	const path = url.split('?')[0].replace(/^\/+|\/+$/g, '')
 	const parts = path.split('/')
@@ -123,7 +151,7 @@ async function request(method, url, body, config = {}) {
 
 	if (path === 'dashboard/stats' && method === 'GET') return mock.getDashboardStats(currentUser()?.role)
 	if (path === 'dashboard/my-subjects' && method === 'GET') return result([])
-	if (path === 'dashboard/my-evaluation-scores' && method === 'GET') return result([])
+	if (path === 'dashboard/my-evaluation-scores' && method === 'GET') return getTeacherEvaluationScores()
 
 	if (path === 'enrollments' && method === 'GET') return mock.getEnrollments(params)
 	if (path === 'enrollments' && method === 'POST') return mock.enrollStudent(body)
