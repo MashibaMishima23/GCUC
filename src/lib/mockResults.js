@@ -7,6 +7,7 @@ export const MOCK_EVALUATIONS_WITH_SUBJECT_SAMPLES = [
   { id: 4, period_id: 3, period_title: '2nd Semester 2023-2024 Student Evaluation', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz', subject_id: 1, subject_name: 'Introduction to Computing', student_id: 21, avg_score: 4.15, semester: '2nd', school_year: '2023-2024', evaluator_type: 'student', submitted_at: '2024-03-21T10:00:00' },
   { id: 5, period_id: 3, period_title: '2nd Semester 2023-2024 Student Evaluation', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz', subject_id: 1, subject_name: 'Introduction to Computing', student_id: 22, avg_score: 4.30, semester: '2nd', school_year: '2023-2024', evaluator_type: 'student', submitted_at: '2024-03-22T10:00:00' },
   { id: 6, period_id: 3, period_title: '2nd Semester 2023-2024 Student Evaluation', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz', subject_id: 2, subject_name: 'Data Structures and Algorithms', student_id: 23, avg_score: 4.75, semester: '2nd', school_year: '2023-2024', evaluator_type: 'student', submitted_at: '2024-03-23T10:00:00' },
+  { id: 7, period_id: 1, period_title: '1st Semester 2025-2026 Student Evaluation', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz', subject_id: 2, subject_name: 'Data Structures and Algorithms', student_id: 21, avg_score: 4.50, semester: '1st', school_year: '2025-2026', evaluator_type: 'student', submitted_at: '2026-07-02T10:00:00' },
 ]
 
 export function getMockTeacherEvaluationDetails(periodId, teacherId) {

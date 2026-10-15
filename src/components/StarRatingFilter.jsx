@@ -120,6 +120,50 @@ function TeacherDetailModal({ teacher, periodId, onClose }) {
               </div>
             </div>
 
+            {details.subjects?.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-gray-800 mb-3">Likert Scale by Subject</h3>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {details.subjects.map(subject => (
+                    <div key={subject.id} className="rounded-xl border border-gray-200 p-4">
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div>
+                          <h4 className="font-semibold text-gray-800">{subject.code} · {subject.name}</h4>
+                          <p className="text-xs text-gray-500 mt-1">{subject.total_evaluations} evaluations</p>
+                        </div>
+                        <p className="text-2xl font-bold text-primary-700">{subject.avg_score}<span className="text-xs font-normal text-gray-500"> / 5</span></p>
+                      </div>
+                      <div className="space-y-2">
+                        {subject.distribution.slice().reverse().map(rating => {
+                          const total = subject.distribution.reduce((sum, item) => sum + item.count, 0)
+                          const percentage = total > 0 ? (rating.count / total) * 100 : 0
+                          return (
+                            <div key={rating.rating} className="flex items-center gap-2 text-xs">
+                              <span className="w-6 text-gray-600">{rating.rating}</span>
+                              <div className="flex-1 h-3 rounded-full bg-gray-100 overflow-hidden">
+                                <div className="h-full bg-yellow-400" style={{ width: `${percentage}%` }} />
+                              </div>
+                              <span className="w-8 text-right text-gray-500">{rating.count}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {subject.categories.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
+                          {subject.categories.map(category => (
+                            <div key={category.category} className="flex justify-between gap-3 text-xs">
+                              <span className="text-gray-600">{category.category}</span>
+                              <span className="font-semibold text-gray-800">{category.avg_score}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Category Scores */}
             {details.categories && details.categories.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-4">

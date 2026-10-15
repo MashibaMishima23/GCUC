@@ -1,4 +1,4 @@
-import { MOCK_PERIODS, MOCK_QUESTIONNAIRES, MOCK_USERS } from '../data/mockData'
+import { MOCK_PERIODS, MOCK_QUESTIONNAIRES, MOCK_SUBJECTS, MOCK_USERS } from '../data/mockData'
 import { MOCK_EVALUATIONS_WITH_SUBJECT_SAMPLES } from './mockResults'
 
 function getStars(score) {
@@ -13,6 +13,17 @@ function getPeriodTeacherEvaluations(periodId, teacherId) {
   return MOCK_EVALUATIONS_WITH_SUBJECT_SAMPLES.filter(evaluation =>
     evaluation.period_id == periodId && (teacherId == null || evaluation.teacher_id == teacherId)
   )
+}
+
+function getLikertDistribution(average, responseCount) {
+  const lowerRating = Math.floor(average)
+  const upperRating = Math.min(5, Math.ceil(average))
+  const upperCount = lowerRating === upperRating ? 0 : Math.round((average - lowerRating) * responseCount)
+  const lowerCount = responseCount - upperCount
+  return [1, 2, 3, 4, 5].map(rating => ({
+    rating,
+    count: rating === lowerRating ? lowerCount : rating === upperRating ? upperCount : 0,
+  }))
 }
 
 export function getMockStarRatings(periodId, starFilter = 'all') {
@@ -68,6 +79,29 @@ export function getMockTeacherRatingDetails(periodId, teacherId) {
   const categories = [...new Set((questionnaire?.questions || [])
     .filter(question => question.type === 'rating')
     .map(question => question.category || 'General'))]
+  const subjectGroups = new Map()
+
+  teacherEvaluations.forEach(evaluation => {
+    const subject = MOCK_SUBJECTS.find(item => item.id == evaluation.subject_id)
+    const key = evaluation.subject_id ?? 'peer'
+    const group = subjectGroups.get(key) || { subject, evaluations: [] }
+    group.evaluations.push(evaluation)
+    subjectGroups.set(key, group)
+  })
+
+  const subjects = [...subjectGroups.values()].map(({ subject, evaluations: subjectEvaluations }) => {
+    const subjectAverage = subjectEvaluations.reduce((sum, evaluation) => sum + Number(evaluation.avg_score || 0), 0) / subjectEvaluations.length
+    const subjectAnswerCount = subjectEvaluations.length * 100
+    return {
+      id: subject?.id ?? 'peer',
+      code: subject?.code || '',
+      name: subject?.name || 'Peer Evaluation',
+      avg_score: subjectAverage.toFixed(2),
+      total_evaluations: subjectEvaluations.length,
+      distribution: getLikertDistribution(subjectAverage, subjectAnswerCount),
+      categories: categories.map(category => ({ category, avg_score: subjectAverage.toFixed(2), count: subjectAnswerCount })),
+    }
+  })
 
   return {
     teacher: {
@@ -86,5 +120,6 @@ export function getMockTeacherRatingDetails(periodId, teacherId) {
       count: rating === lowerRating ? lowerCount : rating === upperRating ? upperCount : 0,
     })),
     categories: categories.map(category => ({ category, avg_score: average.toFixed(2), count: answerCount })),
+    subjects,
   }
 }
