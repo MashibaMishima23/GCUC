@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  getQuestionnaire, createQuestionnaire, updateQuestionnaire, aiSuggestQuestions
-} from '../lib/mockApi'
+import api from '../lib/api'
 import toast from 'react-hot-toast'
 import {
   PlusIcon, TrashIcon, SparklesIcon,
-  CheckCircleIcon
+  PencilIcon, CheckCircleIcon, XMarkIcon
 } from '@heroicons/react/24/outline'
 
 const CATEGORIES = [
@@ -15,12 +13,19 @@ const CATEGORIES = [
   'Assessment & Feedback', 'Other',
 ]
 
+// Source badge config
 const SOURCE_CONFIG = {
-  manual:       { label: 'Manual',       color: 'bg-gray-100 text-gray-600',      icon: '✏️' },
+  manual:       { label: 'Manual',       color: 'bg-gray-100 text-gray-600',     icon: '✏️' },
   ai_generated: { label: 'AI Generated', color: 'bg-primary-100 text-primary-700', icon: '🤖' },
   ai_edited:    { label: 'AI Edited',    color: 'bg-primary-200 text-primary-800', icon: '🤖✏️' },
 }
 
+/**
+ * Determine source when a question's text changes.
+ * - If it never had an AI origin  → stays 'manual'
+ * - If text matches original AI text → 'ai_generated'
+ * - If text differs from original AI text → 'ai_edited'
+ */
 function resolveSource(current, aiOriginal) {
   if (!aiOriginal) return 'manual'
   return current.trim() === aiOriginal.trim() ? 'ai_generated' : 'ai_edited'
@@ -46,15 +51,17 @@ export default function QuestionnaireForm() {
   const [questions, setQuestions] = useState([emptyQ()])
   const [saving, setSaving] = useState(false)
 
+  // AI suggest panel state
   const [aiPanel, setAiPanel] = useState(false)
   const [aiCategory, setAiCategory] = useState('Teaching Methods')
   const [aiCount, setAiCount] = useState(5)
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiSuggestions, setAiSuggestions] = useState([])
+  const [aiSuggestions, setAiSuggestions] = useState([]) // { text, type, category, accepted }
 
+  // Load existing questionnaire when editing
   useEffect(() => {
     if (!isEdit) return
-    getQuestionnaire(id).then(r => {
+    api.get(`/questionnaires/${id}`).then(r => {
       const { title, description, evaluator_type, semester, school_year, questions: qs } = r.data
       setForm({ title, description: description || '', evaluator_type, semester, school_year })
       setQuestions(qs.length ? qs.map(q => ({
@@ -65,7 +72,9 @@ export default function QuestionnaireForm() {
     })
   }, [id])
 
+  // ── Question helpers ──────────────────────────────────────────────────
   const addManualQ = () => setQuestions(qs => [...qs, emptyQ()])
+
   const removeQ = i => setQuestions(qs => qs.filter((_, idx) => idx !== i))
 
   const updateQText = (i, newText) => {
@@ -80,12 +89,13 @@ export default function QuestionnaireForm() {
     setQuestions(qs => qs.map((q, idx) => idx === i ? { ...q, [k]: v } : q))
   }
 
+  // ── AI Suggest ────────────────────────────────────────────────────────
   const fetchSuggestions = async () => {
     if (aiLoading) return
     setAiLoading(true)
     setAiSuggestions([])
     try {
-      const r = await aiSuggestQuestions({
+      const r = await api.post('/questionnaires/ai-suggest', {
         evaluator_type: form.evaluator_type,
         category: aiCategory,
         semester: form.semester,
@@ -94,19 +104,20 @@ export default function QuestionnaireForm() {
       })
       setAiSuggestions(r.data.suggestions.map(s => ({ ...s, accepted: false })))
     } catch (err) {
-      toast.error(err.response?.data?.message || 'AI suggestion failed')
+      toast.error(err.response?.data?.message || 'AI suggestion failed. Is Ollama running?')
     } finally {
       setAiLoading(false)
     }
   }
 
+  // Accept one AI suggestion → add to questions list with source tracking
   const acceptSuggestion = (suggestion) => {
     const newQ = {
       text: suggestion.text,
       type: suggestion.type || 'rating',
       category: suggestion.category,
-      source: 'ai_generated',
-      ai_original_text: suggestion.text,
+      source: 'ai_generated',        // accepted as-is
+      ai_original_text: suggestion.text, // preserve original for diff tracking
     }
     setQuestions(qs => [...qs, newQ])
     setAiSuggestions(prev =>
@@ -115,6 +126,7 @@ export default function QuestionnaireForm() {
     toast.success('Question added')
   }
 
+  // Accept all unaccepted suggestions at once
   const acceptAll = () => {
     const unaccepted = aiSuggestions.filter(s => !s.accepted)
     if (!unaccepted.length) return
@@ -130,6 +142,7 @@ export default function QuestionnaireForm() {
     toast.success(`${unaccepted.length} questions added`)
   }
 
+  // ── Submit ────────────────────────────────────────────────────────────
   const handleSubmit = async e => {
     e.preventDefault()
     const empty = questions.filter(q => !q.text.trim())
@@ -148,11 +161,11 @@ export default function QuestionnaireForm() {
         })),
       }
       if (isEdit) {
-        await updateQuestionnaire(id, payload)
+        await api.patch(`/questionnaires/${id}`, payload)
         toast.success('Questionnaire updated')
         navigate(`/questionnaires/${id}`)
       } else {
-        const r = await createQuestionnaire(payload)
+        const r = await api.post('/questionnaires', payload)
         toast.success('Questionnaire created')
         navigate(`/questionnaires/${r.data.id}`)
       }
@@ -163,6 +176,7 @@ export default function QuestionnaireForm() {
     }
   }
 
+  // Source summary counts
   const sourceCounts = questions.reduce((acc, q) => {
     acc[q.source] = (acc[q.source] || 0) + 1
     return acc
@@ -178,7 +192,8 @@ export default function QuestionnaireForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Basic Info */}
+
+        {/* ── Basic Info ── */}
         <div className="card space-y-4">
           <h2>Basic Information</h2>
           <div>
@@ -216,14 +231,16 @@ export default function QuestionnaireForm() {
           </div>
         </div>
 
-        {/* AI Suggest Panel */}
+        {/* ── AI Suggest Panel ── */}
         <div className="card border-primary-200 bg-primary-50 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <SparklesIcon className="w-5 h-5 text-primary-600" />
               <h2 className="text-primary-800">AI Question Suggestions</h2>
             </div>
-            <button type="button" onClick={() => setAiPanel(p => !p)}
+            <button
+              type="button"
+              onClick={() => setAiPanel(p => !p)}
               className="text-sm text-primary-700 hover:underline">
               {aiPanel ? 'Hide panel' : 'Open panel'}
             </button>
@@ -232,7 +249,7 @@ export default function QuestionnaireForm() {
           {aiPanel && (
             <div className="space-y-4">
               <p className="text-sm text-primary-700">
-                Select a category and let the AI suggest evaluation questions. You can accept them as-is or edit them.
+                Select a category and let Ollama AI suggest evaluation questions. You can accept them as-is or edit them — the system will track which source each question came from.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
@@ -249,7 +266,10 @@ export default function QuestionnaireForm() {
                 </div>
               </div>
 
-              <button type="button" onClick={fetchSuggestions} disabled={aiLoading}
+              <button
+                type="button"
+                onClick={fetchSuggestions}
+                disabled={aiLoading}
                 className="btn-primary flex items-center gap-2">
                 {aiLoading
                   ? <><span className="animate-spin">⚙</span> Generating...</>
@@ -296,11 +316,12 @@ export default function QuestionnaireForm() {
           )}
         </div>
 
-        {/* Questions List */}
+        {/* ── Questions List ── */}
         <div className="card space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h2>Questions ({questions.length})</h2>
+              {/* Source summary */}
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {Object.entries(sourceCounts).map(([src, count]) => {
                   const cfg = SOURCE_CONFIG[src] || SOURCE_CONFIG.manual
@@ -329,9 +350,12 @@ export default function QuestionnaireForm() {
                   : q.source === 'ai_edited'  ? 'border-primary-300 bg-primary-100/30'
                   : 'border-gray-200 bg-gray-50'
                 }`}>
+
+                {/* Question header row */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-600">Q{i + 1}</span>
+                    {/* Source badge */}
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>
                       {cfg.icon} {cfg.label}
                     </span>
@@ -344,6 +368,7 @@ export default function QuestionnaireForm() {
                   )}
                 </div>
 
+                {/* Question text input */}
                 <div>
                   <label className="label">Question Text *</label>
                   <input
@@ -355,6 +380,7 @@ export default function QuestionnaireForm() {
                   />
                 </div>
 
+                {/* Show AI original if edited */}
                 {hasAiDiff && (
                   <div className="text-xs bg-primary-50 border border-primary-200 rounded p-2 text-primary-700">
                     <span className="font-medium">Original AI text:</span>

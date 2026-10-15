@@ -22,10 +22,12 @@ const ACTION_STYLE = {
 }
 
 function levelStatus(levelKey, status, currentLevel, history) {
+  // Find the last relevant action for this level
   const entries = (history || []).filter(h => h.level === levelKey)
   const last = entries[entries.length - 1]
 
   if (!last) {
+    // Nothing done at this level yet
     if (currentLevel === levelKey) return 'pending'
     return 'waiting'
   }

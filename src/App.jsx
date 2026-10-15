@@ -2,30 +2,31 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 
-import Login              from './pages/Login'
-import Register           from './pages/Register'
-import Dashboard          from './pages/Dashboard'
-import Questionnaires     from './pages/Questionnaires'
-import QuestionnaireForm  from './pages/QuestionnaireForm'
-import QuestionnaireDetail from './pages/QuestionnaireDetail'
-import ApprovalQueue      from './pages/ApprovalQueue'
-import EvaluationPeriods  from './pages/EvaluationPeriods'
-import EvaluateTeacher    from './pages/EvaluateTeacher'
-import Reports            from './pages/Reports'
-import ReportDetail       from './pages/ReportDetail'
-import Users              from './pages/Users'
-import MyEvaluations      from './pages/MyEvaluations'
-import AILogs             from './pages/AILogs'
-import NotFound           from './pages/NotFound'
-import Departments        from './pages/Departments'
-import Subjects           from './pages/Subjects'
-import Blocks             from './pages/Blocks'
-import DeptStudents       from './pages/DeptStudents'
+// Pages
+import Login           from './pages/Login'
+import Register        from './pages/Register'
+import Dashboard       from './pages/Dashboard'
+import Profile         from './pages/Profile'
+import EvaluationPeriods from './pages/EvaluationPeriods'
+import EvaluateTeacher from './pages/EvaluateTeacher'
+import Reports         from './pages/Reports'
+import ReportDetail    from './pages/ReportDetail'
+import Users           from './pages/Users'
+import MyEvaluations   from './pages/MyEvaluations'
+import NotFound        from './pages/NotFound'
+import Departments     from './pages/Departments'
+import DepartmentInfo  from './pages/DepartmentInfo'
+import Subjects        from './pages/Subjects'
+import Blocks          from './pages/Blocks'
+import BlockTeacherAssignments from './pages/BlockTeacherAssignments'
+import DeptStudents    from './pages/DeptStudents'
 import TeacherAssignments from './pages/TeacherAssignments'
-import Enrollments        from './pages/Enrollments'
+import Enrollments     from './pages/Enrollments'
+import ArchiveSettings from './pages/ArchiveSettings'
 
 function RequireAuth({ children, roles }) {
   const { user, loading } = useAuth()
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -36,13 +37,21 @@ function RequireAuth({ children, roles }) {
       </div>
     )
   }
+
   if (!user) return <Navigate to="/login" replace />
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />
   return children
 }
 
-const ADMIN_ROLES = ['guidance', 'admin']
-const MGMT_ROLES  = ['guidance', 'admin', 'president', 'vp']
+// Admin redirects to Users instead of Dashboard
+function DashboardOrRedirect() {
+  const { user } = useAuth()
+  if (user?.role === 'admin') return <Navigate to="/users" replace />
+  return <Dashboard />
+}
+
+const ADMIN_ROLES = ['guidance','admin']
+// Note: DEPT_HEAD_ROLES removed — dept-head routes now use ['department_head'] directly
 
 export default function App() {
   return (
@@ -52,49 +61,63 @@ export default function App() {
         <Route path="/register" element={<Register />} />
 
         <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-          <Route index element={<Dashboard />} />
+          {/* Admin goes to Users, others see Dashboard */}
+          <Route index element={<DashboardOrRedirect />} />
+          
+          {/* Profile - available to all authenticated users */}
+          <Route path="profile" element={<Profile />} />
 
-          <Route path="questionnaires" element={<Questionnaires />} />
-          <Route path="questionnaires/new"
-            element={<RequireAuth roles={['guidance','admin','staff']}><QuestionnaireForm /></RequireAuth>} />
-          <Route path="questionnaires/:id" element={<QuestionnaireDetail />} />
-          <Route path="questionnaires/:id/edit"
-            element={<RequireAuth roles={['guidance','admin','staff']}><QuestionnaireForm /></RequireAuth>} />
+          {/* Approvals — DISABLED (no questionnaire approval needed) */}
+          {/* <Route path="approvals" element={<ApprovalQueue />} /> */}
 
-          <Route path="approvals"
-            element={<RequireAuth roles={['president','vp','department_head']}><ApprovalQueue /></RequireAuth>} />
-
+          {/* Evaluations */}
           <Route path="periods" element={<EvaluationPeriods />} />
           <Route path="evaluate/:periodId/:teacherId" element={<EvaluateTeacher />} />
           <Route path="my-evaluations"
             element={<RequireAuth roles={['teacher']}><MyEvaluations /></RequireAuth>} />
 
-          <Route path="reports" element={<Reports />} />
-          <Route path="reports/:id" element={<ReportDetail />} />
-
-          <Route path="ai-logs"
-            element={<RequireAuth roles={['guidance','admin','president','vp']}><AILogs /></RequireAuth>} />
+          <Route path="reports" element={<RequireAuth roles={['guidance','staff']}><Reports /></RequireAuth>} />
+          <Route path="reports/view" element={<RequireAuth roles={['guidance','staff']}><ReportDetail /></RequireAuth>} />
+          <Route path="reports/:id" element={<RequireAuth roles={['guidance','staff']}><ReportDetail /></RequireAuth>} />
 
           <Route path="users"
-            element={<RequireAuth roles={[...MGMT_ROLES,'department_head']}><Users /></RequireAuth>} />
+            element={<RequireAuth roles={['admin']}><Users /></RequireAuth>} />
 
+          {/* Admin Only – Department Management */}
           <Route path="departments"
-            element={<RequireAuth roles={ADMIN_ROLES}><Departments /></RequireAuth>} />
+            element={<RequireAuth roles={['admin']}><Departments /></RequireAuth>} />
 
+          {/* Guidance/Staff – Department Information (Read-only) */}
+          <Route path="department-info"
+            element={<RequireAuth roles={['guidance','admin','staff']}><DepartmentInfo /></RequireAuth>} />
+
+          {/* Admin Only – Subject Management */}
           <Route path="subjects"
-            element={<RequireAuth roles={ADMIN_ROLES}><Subjects /></RequireAuth>} />
+            element={<RequireAuth roles={['admin']}><Subjects /></RequireAuth>} />
 
+          {/* Block / Section Management — admin and dept_head */}
           <Route path="blocks"
-            element={<RequireAuth roles={['department_head']}><Blocks /></RequireAuth>} />
+            element={<RequireAuth roles={['admin', 'department_head']}><Blocks /></RequireAuth>} />
 
+          {/* Block-specific Teacher Assignments — admin only */}
+          <Route path="block-teachers"
+            element={<RequireAuth roles={ADMIN_ROLES}><BlockTeacherAssignments /></RequireAuth>} />
+
+          {/* Department Head – Student Management */}
           <Route path="dept-students"
             element={<RequireAuth roles={['department_head']}><DeptStudents /></RequireAuth>} />
 
+          {/* Teacher–Subject Assignments — dept_head only */}
           <Route path="assignments"
             element={<RequireAuth roles={['department_head']}><TeacherAssignments /></RequireAuth>} />
 
+          {/* Admin Only – Enrollment Management */}
           <Route path="enrollments"
-            element={<RequireAuth roles={['department_head']}><Enrollments /></RequireAuth>} />
+            element={<RequireAuth roles={['admin']}><Enrollments /></RequireAuth>} />
+
+          {/* Admin Only – Archive Management */}
+          <Route path="archive"
+            element={<RequireAuth roles={['admin']}><ArchiveSettings /></RequireAuth>} />
         </Route>
 
         <Route path="*" element={<NotFound />} />

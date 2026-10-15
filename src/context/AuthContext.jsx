@@ -1,17 +1,21 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { login as mockLogin, getMe } from '../lib/mockApi'
+import api from '../lib/api'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null)
+  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // On mount: validate existing token
   useEffect(() => {
     const token = localStorage.getItem('token')
-    if (!token) { setLoading(false); return }
-    getMe()
-      .then(res => setUser(res.data))
+    if (!token) {
+      setLoading(false)
+      return
+    }
+    api.get('/auth/me')
+      .then(res => setUser(res.data.user))
       .catch(() => {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
@@ -21,7 +25,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = useCallback(async (email, password) => {
-    const res = await mockLogin(email, password)
+    const res = await api.post('/auth/login', { email, password })
     const { token, user: userData } = res.data
     localStorage.setItem('token', token)
     localStorage.setItem('user', JSON.stringify(userData))
@@ -35,12 +39,23 @@ export function AuthProvider({ children }) {
     setUser(null)
   }, [])
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await api.get('/auth/me')
+      const userData = res.data.user
+      setUser(userData)
+      localStorage.setItem('user', JSON.stringify(userData))
+    } catch (err) {
+      console.error('Failed to refresh user:', err)
+    }
+  }, [])
+
   const can = useCallback((...roles) => {
     return user ? roles.includes(user.role) : false
   }, [user])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, can }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, can }}>
       {children}
     </AuthContext.Provider>
   )

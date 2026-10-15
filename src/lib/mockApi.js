@@ -96,6 +96,16 @@ export async function createUser(form) {
   const dept = departments.find(d => d.id == form.department_id)
   const newUser = { id: ++nextId, ...form, department_name: dept?.name || '', is_active: 1 }
   users.push(newUser)
+
+  // Auto-sync: if creating a department_head, update the department's head
+  if (form.role === 'department_head' && form.department_id) {
+    const dIdx = departments.findIndex(d => d.id == form.department_id)
+    if (dIdx >= 0) {
+      departments[dIdx].department_head_id   = newUser.id
+      departments[dIdx].department_head_name = newUser.name
+    }
+  }
+
   return ok(newUser)
 }
 
@@ -105,6 +115,17 @@ export async function updateUser(id, form) {
   if (idx < 0) err('User not found', 404)
   const dept = departments.find(d => d.id == (form.department_id || users[idx].department_id))
   users[idx] = { ...users[idx], ...form, department_name: dept?.name || users[idx].department_name }
+
+  // Auto-sync: if updating to/as department_head with a department, sync the dept
+  const updated = users[idx]
+  if (updated.role === 'department_head' && updated.department_id) {
+    const dIdx = departments.findIndex(d => d.id == updated.department_id)
+    if (dIdx >= 0) {
+      departments[dIdx].department_head_id   = updated.id
+      departments[dIdx].department_head_name = updated.name
+    }
+  }
+
   return ok(users[idx])
 }
 
@@ -115,10 +136,25 @@ export async function deleteUser(id) {
   users[idx].is_active = 0
   return ok({ message: 'User deactivated' })
 }
+export async function permanentlyDeleteUser(id) {
+  await delay()
+  const idx = users.findIndex(user => user.id == id)
+  if (idx < 0) err('User not found', 404)
+  if (['admin', 'guidance'].includes(users[idx].role)) err('Cannot delete system accounts', 403)
+  users.splice(idx, 1)
+  return ok({ message: 'User permanently deleted' })
+}
 
 // ── Departments ───────────────────────────────────────────────────────────────
 export async function getDepartments() {
-  await delay(); return ok([...departments])
+  await delay()
+  return ok(departments.map(department => ({
+    ...department,
+    student_count: users.filter(user => user.department_id == department.id && user.role === 'student' && user.is_active).length,
+    teacher_count: users.filter(user => user.department_id == department.id && ['teacher', 'department_head'].includes(user.role) && user.is_active).length,
+    subject_count: subjects.filter(subject => subject.department_id == department.id).length,
+    block_count: blocks.filter(block => block.department_id == department.id).length,
+  })))
 }
 export async function createDepartment(form) {
   await delay()
@@ -323,8 +359,9 @@ export async function aiSuggestQuestions(form) {
 }
 
 // ── Evaluation Periods ────────────────────────────────────────────────────────
-export async function getEvaluationPeriods() {
-  await delay(); return ok([...periods])
+export async function getEvaluationPeriods(params = {}) {
+  await delay()
+  return ok(periods.filter(period => !params.evaluator_type || period.evaluator_type === params.evaluator_type).map(period => ({ ...period })))
 }
 export async function createEvaluationPeriod(form) {
   await delay()
@@ -332,9 +369,41 @@ export async function createEvaluationPeriod(form) {
   const newP = { id: ++nextId, ...form, questionnaire_title: q?.title || '', is_active: 1, evaluator_type: q?.evaluator_type || 'student' }
   periods.push(newP); return ok(newP)
 }
+export async function updateEvaluationPeriod(id, form) {
+  await delay()
+  const idx = periods.findIndex(period => period.id == id)
+  if (idx < 0) err('Evaluation period not found', 404)
+  const questionnaire = questionnaires.find(item => item.id == form.questionnaire_id)
+  periods[idx] = { ...periods[idx], ...form, questionnaire_title: questionnaire?.title || periods[idx].questionnaire_title }
+  return ok(periods[idx])
+}
+export async function toggleEvaluationPeriod(id) {
+  await delay()
+  const period = periods.find(item => item.id == id)
+  if (!period) err('Evaluation period not found', 404)
+  period.is_active = period.is_active ? 0 : 1
+  return ok({ message: 'Period status updated', is_active: period.is_active })
+}
 export async function getPeriodTeachers(periodId) {
   await delay()
   return ok(MOCK_PERIOD_TEACHERS[periodId] || [])
+}
+export async function getPeriodTeacherStatus(periodId) {
+  await delay()
+  const period = periods.find(item => item.id == periodId)
+  const teachers = MOCK_PERIOD_TEACHERS[periodId] || []
+  return ok({
+    evaluator_type: period?.evaluator_type || 'student',
+    teachers: teachers.map(teacher => {
+      const received = evaluations.filter(evaluation => evaluation.period_id == periodId && evaluation.teacher_id === teacher.id).length
+      return {
+        ...teacher,
+        status: received ? 'completed' : 'not_evaluated',
+        received_evaluations: received,
+        expected_evaluations: 1,
+      }
+    }),
+  })
 }
 
 // ── Evaluations ───────────────────────────────────────────────────────────────
@@ -488,4 +557,100 @@ export async function unenrollStudent(data) {
   )
   if (idx >= 0) enrollments.splice(idx, 1)
   return ok({ message: 'Student unenrolled' })
+}
+
+// ── Bulk Import Enrollment ───────────────────────────────────────────────────
+export async function bulkImportEnrollments(formData) {
+  await delay(1500) // Simulate file processing time
+  
+  // Simulate successful import with stats
+  const mockResult = {
+    message: 'Import complete',
+    total_rows: 47,
+    departments_created: 0,
+    students_created: 3,
+    teachers_created: 1,
+    subjects_created: 2,
+    assignments_created: 5,
+    enrollments_created: 42,
+    skipped_duplicates: 5,
+    errors: [
+      { row: 12, reason: 'Missing required value(s): student_id, student_name, subject_code, semester, or school_year' },
+      { row: 23, reason: 'Invalid semester value' }
+    ]
+  }
+  
+  return ok(mockResult)
+}
+
+// ── Evaluation Progress ───────────────────────────────────────────────────────
+import { MOCK_PERIOD_PROGRESS } from '../data/mockData'
+
+export async function getPeriodProgress(periodId) {
+  await delay()
+  const progress = MOCK_PERIOD_PROGRESS[periodId]
+  if (!progress) return ok({ total_students: 0, evaluated: 0, not_yet: 0, total_submissions: 0, by_department: [], by_teacher: [], daily_trend: [] })
+  return ok(progress)
+}
+
+// ── Report Approval ───────────────────────────────────────────────────────────
+export async function getPendingApprovalReports() {
+  await delay()
+  return ok(reports.filter(r => r.approval_status === 'pending_approval'))
+}
+
+export async function submitReportForApproval(id) {
+  await delay()
+  const idx = reports.findIndex(r => r.id == id)
+  if (idx < 0) err('Report not found', 404)
+  if (!['draft','rejected'].includes(reports[idx].approval_status))
+    err(`Cannot submit: current status is ${reports[idx].approval_status}`)
+  reports[idx].approval_status = 'pending_approval'
+  reports[idx].submitted_for_approval_at = new Date().toISOString()
+  return ok({ message: 'Report submitted for approval' })
+}
+
+export async function reviewReport(id, { action, notes }) {
+  await delay()
+  const idx = reports.findIndex(r => r.id == id)
+  if (idx < 0) err('Report not found', 404)
+  if (reports[idx].approval_status !== 'pending_approval')
+    err('Report is not pending approval')
+  reports[idx].approval_status = action  // 'approved' | 'rejected'
+  reports[idx].reviewed_at = new Date().toISOString()
+  reports[idx].review_notes = notes || null
+  return ok({ message: `Report ${action}` })
+}
+
+export async function saveReport(form) {
+  await delay(500)
+  const teacher = users.find(u => u.id == form.teacher_id)
+  const period  = periods.find(p => p.id == form.period_id)
+  const existing = reports.findIndex(r =>
+    r.report_type === 'individual' &&
+    r.teacher_id == form.teacher_id &&
+    r.period_id == form.period_id
+  )
+  if (existing >= 0) {
+    reports[existing] = { ...reports[existing], ...form,
+      narrative: form.narrative, strengths: form.strengths || '',
+      weaknesses: form.weaknesses || '', recommendations: form.recommendations || '',
+      generated_by_ai: form.is_ai_assisted ? 1 : 0,
+      approval_status: 'draft', generated_at: new Date().toISOString() }
+    return ok(reports[existing])
+  }
+  const newR = {
+    id: ++nextId, report_type: 'individual',
+    teacher_id: parseInt(form.teacher_id), teacher_name: teacher?.name || '',
+    department: teacher?.department || '', department_name: teacher?.department || '',
+    period_id: parseInt(form.period_id), period_title: period?.title || '',
+    average_score: '0.00', total_evaluations: 0,
+    school_year: period?.school_year || '', semester: period?.semester || '',
+    generated_at: new Date().toISOString(), generated_by_ai: form.is_ai_assisted ? 1 : 0,
+    narrative: form.narrative, strengths: form.strengths || '',
+    weaknesses: form.weaknesses || '', recommendations: form.recommendations || '',
+    approval_status: 'draft', submitted_for_approval_at: null, review_notes: null,
+  }
+  reports.push(newR)
+  return ok(newR)
 }

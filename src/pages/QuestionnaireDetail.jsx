@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { getQuestionnaire, submitQuestionnaireForApproval, reviewQuestionnaire } from '../lib/mockApi'
+import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import ApprovalTimeline from '../components/ApprovalTimeline'
+import ReviewModal from '../components/ReviewModal'
 import {
   PaperAirplaneIcon, PencilIcon, CheckIcon,
   XMarkIcon, ArrowPathIcon, RocketLaunchIcon
 } from '@heroicons/react/24/outline'
 
+// ── Status display config ──────────────────────────────────────────────────
 const STATUS_META = {
   draft:               { label: 'Draft',               color: 'bg-gray-100 text-gray-700',    banner: null },
   pending_dept:        { label: 'Pending Dept Review',  color: 'bg-yellow-100 text-yellow-700', banner: 'yellow' },
@@ -33,6 +35,9 @@ const BANNER_STYLE = {
 
 const LEVEL_LABEL = { dept: 'Department', vp: 'Vice President', president: 'President' }
 
+// Roles that can act as approvers per level
+// guidance = creator role, NOT an approver at any level
+// admin = legacy superuser but also NOT an approver (only real role holders approve)
 function canActAt(role, status) {
   if (status === 'pending_dept'      && role === 'department_head') return 'dept'
   if (status === 'pending_vp'        && role === 'vp')              return 'vp'
@@ -40,6 +45,7 @@ function canActAt(role, status) {
   return null
 }
 
+// Can the current user submit / resubmit this questionnaire
 function canSubmit(role, status) {
   return ['guidance','admin','staff'].includes(role) &&
     ['draft','revision_requested','rejected'].includes(status)
@@ -52,13 +58,14 @@ export default function QuestionnaireDetail() {
   const [q, setQ]    = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const [modal, setModal]       = useState(null)
+  // Review modal (for approvers)
+  const [modal, setModal]     = useState(null) // { action }
   const [comments, setComments] = useState('')
-  const [saving, setSaving]     = useState(false)
+  const [saving, setSaving]   = useState(false)
 
   const load = () => {
     setLoading(true)
-    getQuestionnaire(id)
+    api.get(`/questionnaires/${id}`)
       .then(r => setQ(r.data))
       .catch(() => toast.error('Failed to load questionnaire'))
       .finally(() => setLoading(false))
@@ -67,7 +74,7 @@ export default function QuestionnaireDetail() {
 
   const submitForApproval = async () => {
     try {
-      await submitQuestionnaireForApproval(id)
+      await api.post(`/questionnaires/${id}/submit-approval`)
       toast.success('Submitted for Department review')
       load()
     } catch (err) { toast.error(err.response?.data?.message || 'Failed') }
@@ -80,7 +87,7 @@ export default function QuestionnaireDetail() {
     if (!comments.trim()) return toast.error('Comments are required')
     setSaving(true)
     try {
-      await reviewQuestionnaire(id, { action: modal.action, comments })
+      await api.post(`/questionnaires/${id}/review`, { action: modal.action, comments })
       const labels = { approved: 'approved', rejected: 'rejected', revision_requested: 'returned for revision' }
       toast.success(`Questionnaire ${labels[modal.action]}`)
       closeModal()
@@ -98,11 +105,14 @@ export default function QuestionnaireDetail() {
   const canResubmit = canSubmit(user?.role, q.status)
   const isFullyApproved = q.status === 'fully_approved'
 
+  // Last rejection/revision info
   const lastAction = [...(q.approval_history || [])].reverse()
     .find(h => ['rejected','revision_requested'].includes(h.action))
 
   return (
     <div className="max-w-4xl space-y-6">
+
+      {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -118,6 +128,7 @@ export default function QuestionnaireDetail() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Creator actions */}
           {canResubmit && (
             <>
               <Link to={`/questionnaires/${id}/edit`} className="btn-secondary text-sm flex items-center gap-1">
@@ -131,6 +142,7 @@ export default function QuestionnaireDetail() {
             </>
           )}
 
+          {/* Approver actions */}
           {actingLevel && (
             <>
               <button onClick={() => openReview('approved')}
@@ -148,6 +160,7 @@ export default function QuestionnaireDetail() {
             </>
           )}
 
+          {/* Fully approved badge / deploy hint */}
           {isFullyApproved && (
             <span className="flex items-center gap-1.5 text-sm text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg font-medium">
               <RocketLaunchIcon className="w-4 h-4" />
@@ -157,6 +170,7 @@ export default function QuestionnaireDetail() {
         </div>
       </div>
 
+      {/* Status Banner */}
       {sm.banner && (
         <div className={`rounded-xl border p-4 ${BANNER_STYLE[sm.banner]}`}>
           {q.status === 'fully_approved' && (
@@ -186,12 +200,14 @@ export default function QuestionnaireDetail() {
         </div>
       )}
 
+      {/* Approval Timeline */}
       <ApprovalTimeline
         status={q.status}
         currentLevel={q.current_level}
         approvalHistory={q.approval_history || []}
       />
 
+      {/* Description */}
       {q.description && (
         <div className="card">
           <p className="text-sm font-medium text-gray-500 mb-1">Description</p>
@@ -199,6 +215,7 @@ export default function QuestionnaireDetail() {
         </div>
       )}
 
+      {/* Question origin summary */}
       {q.questions?.length > 0 && (() => {
         const counts = q.questions.reduce((acc, qu) => {
           const s = qu.source || 'manual'
@@ -223,6 +240,7 @@ export default function QuestionnaireDetail() {
         )
       })()}
 
+      {/* Questions list */}
       <div className="card space-y-4">
         <h2>Questions ({q.questions?.length || 0})</h2>
         {(q.questions || []).map((question, i) => {
@@ -272,44 +290,17 @@ export default function QuestionnaireDetail() {
 
       <Link to="/questionnaires" className="btn-secondary text-sm inline-block">← Back to Questionnaires</Link>
 
+      {/* Review Modal — shared ReviewModal component */}
       {modal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <h2 className={`font-semibold ${
-              modal.action === 'approved'           ? 'text-green-700' :
-              modal.action === 'revision_requested' ? 'text-amber-600' : 'text-red-700'
-            }`}>
-              {modal.action === 'approved'           ? `✅ Approve at ${LEVEL_LABEL[actingLevel]} Level` :
-               modal.action === 'revision_requested' ? '🔄 Request Revision' :
-                                                      '❌ Reject Questionnaire'}
-            </h2>
-            <div>
-              <label className="label">
-                {modal.action === 'approved' ? 'Approval Comments *' :
-                 modal.action === 'revision_requested' ? 'Revision Instructions *' : 'Reason for Rejection *'}
-              </label>
-              <textarea className="input" rows={4} autoFocus
-                placeholder="Add your comments here…"
-                value={comments}
-                onChange={e => setComments(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button onClick={closeModal} className="btn-secondary" disabled={saving}>Cancel</button>
-              <button
-                onClick={submitReview}
-                disabled={saving || !comments.trim()}
-                className={
-                  modal.action === 'approved'           ? 'btn-success' :
-                  modal.action === 'revision_requested' ? 'btn-warning' : 'btn-danger'
-                }>
-                {saving ? 'Submitting…' :
-                  modal.action === 'approved'           ? 'Confirm Approval' :
-                  modal.action === 'revision_requested' ? 'Send for Revision' : 'Confirm Rejection'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ReviewModal
+          action={modal.action}
+          actingLevel={actingLevel}
+          comments={comments}
+          onChange={setComments}
+          onSubmit={submitReview}
+          onClose={closeModal}
+          saving={saving}
+        />
       )}
     </div>
   )

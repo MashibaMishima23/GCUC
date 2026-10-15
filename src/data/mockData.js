@@ -144,21 +144,36 @@ export const MOCK_MY_RESULTS = [
 
 export const MOCK_REPORTS = [
   {
-    id: 1, report_type: 'individual', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz', department: 'Information Technology', department_name: 'Information Technology', period_id: 1, period_title: '1st Semester 2025-2026 Student Evaluation', average_score: 4.25, total_evaluations: 52, school_year: '2025-2026', semester: '1st', generated_at: '2026-07-10T08:00:00',
+    id: 1, report_type: 'individual', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz',
+    department: 'Information Technology', department_name: 'Information Technology',
+    period_id: 1, period_title: '1st Semester 2025-2026 Student Evaluation',
+    average_score: 4.25, total_evaluations: 52, school_year: '2025-2026', semester: '1st',
+    generated_at: '2026-07-10T08:00:00', generated_by_ai: 0,
+    approval_status: 'draft', submitted_for_approval_at: null, review_notes: null,
     narrative: 'Prof. Carlos Dela Cruz has demonstrated consistent excellence in the delivery of Information Technology subjects during the 1st Semester of Academic Year 2024-2025. Based on student evaluations from IT101 and IT201, the faculty member received an overall average rating of 4.25 out of 5.00, placing performance at the Very Satisfactory level.\n\nStudents particularly commended Prof. Dela Cruz for his ability to simplify complex programming concepts and relate them to real-world applications. The structured approach to teaching and the use of visual aids significantly contributed to student comprehension.\n\nOverall, the faculty demonstrates strong professional competence and a genuine commitment to student learning.',
     strengths: 'Clear and engaging explanation of technical concepts\nExcellent command of the subject matter\nUse of real-world examples to illustrate abstract ideas\nConsistent availability for student consultation',
     weaknesses: 'Occasional pacing issues — advanced topics sometimes covered too quickly\nLimited use of interactive activities during lectures\nFeedback on student assignments could be more detailed',
     recommendations: 'Incorporate more hands-on activities and pair programming exercises\nProvide written feedback alongside grades for major projects\nConsider flipped classroom techniques for advanced modules',
   },
   {
-    id: 2, report_type: 'department', teacher_id: null, teacher_name: null, department_name: 'Information Technology', department: 'Information Technology', period_id: 1, period_title: '1st Semester 2025-2026 Student Evaluation', average_score: 4.06, total_evaluations: 180, school_year: '2025-2026', semester: '1st', generated_at: '2026-07-10T09:00:00',
+    id: 2, report_type: 'department', teacher_id: null, teacher_name: null,
+    department_name: 'Information Technology', department: 'Information Technology',
+    period_id: 1, period_title: '1st Semester 2025-2026 Student Evaluation',
+    average_score: 4.06, total_evaluations: 180, school_year: '2025-2026', semester: '1st',
+    generated_at: '2026-07-10T09:00:00', generated_by_ai: 1,
+    approval_status: 'pending_approval', submitted_for_approval_at: '2026-07-11T10:00:00', review_notes: null,
     narrative: 'The Information Technology Department received an overall average rating of 4.06 out of 5.00 for the 1st Semester of Academic Year 2024-2025. A total of 180 student evaluations were collected across all IT subjects and faculty members.\n\nThe department shows strong performance across teaching methodology and subject mastery dimensions. Faculty are commended for adapting to the demands of contemporary IT curriculum and maintaining relevance in their course delivery.\n\nThe department is encouraged to continue collaborative practices and pursue pedagogical innovation to sustain and improve performance outcomes.',
     strengths: 'High subject matter competency across all faculty members\nStrong student-faculty rapport observed in evaluation comments\nConsistently updated course materials reflecting current IT trends',
     weaknesses: 'Variation in teaching quality between junior and senior faculty\nInconsistent classroom management practices observed in practical labs\nFeedback mechanisms need to be standardized across all sections',
     recommendations: 'Implement peer mentoring program pairing junior and senior faculty\nConduct department-wide workshops on active learning strategies\nStandardize assessment rubrics and feedback templates',
   },
   {
-    id: 3, report_type: 'individual', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz', department: 'Information Technology', department_name: 'Information Technology', period_id: 3, period_title: '2nd Semester 2023-2024 Student Evaluation', average_score: 4.50, total_evaluations: 48, school_year: '2023-2024', semester: '2nd', generated_at: '2024-06-15T10:00:00',
+    id: 3, report_type: 'individual', teacher_id: 10, teacher_name: 'Prof. Carlos Dela Cruz',
+    department: 'Information Technology', department_name: 'Information Technology',
+    period_id: 3, period_title: '2nd Semester 2023-2024 Student Evaluation',
+    average_score: 4.50, total_evaluations: 48, school_year: '2023-2024', semester: '2nd',
+    generated_at: '2024-06-15T10:00:00', generated_by_ai: 0,
+    approval_status: 'approved', submitted_for_approval_at: '2024-06-16T08:00:00', review_notes: null,
     narrative: 'Prof. Carlos Dela Cruz achieved an outstanding performance rating of 4.50 out of 5.00 in the 2nd Semester of AY 2023-2024, placing the faculty at the Outstanding performance level. Students consistently praised the professor\'s expertise in Data Structures and dedication to student success.',
     strengths: 'Outstanding clarity of instruction\nExcellent integration of theory and practice\nHighly responsive to student needs',
     weaknesses: 'Minor improvements needed in assessment variety',
@@ -229,4 +244,50 @@ export const MOCK_DEPT_HEAD_STATS = {
   total_subjects: 3,
   total_blocks: 2,
   total_evaluations: 52,
+}
+
+// ── Evaluation progress per period (for progress tracking graph) ─────────────
+export const MOCK_PERIOD_PROGRESS = {
+  1: {
+    total_students:    25,
+    evaluated:         18,
+    not_yet:           7,
+    total_teachers:    3,
+    total_submissions: 18,
+    by_department: [
+      { name: 'Information Technology', total: 15, evaluated: 12 },
+      { name: 'Business Administration', total: 6,  evaluated: 4  },
+      { name: 'Education',              total: 4,  evaluated: 2  },
+    ],
+    by_teacher: [
+      { name: 'Prof. Carlos Dela Cruz', subject: 'IT101', total: 15, evaluated: 12 },
+      { name: 'Prof. Carlos Dela Cruz', subject: 'IT201', total: 15, evaluated: 10 },
+      { name: 'Ms. Rowena Bautista',    subject: 'IT301', total: 15, evaluated: 8  },
+    ],
+    daily_trend: [
+      { date: '2026-06-05', count: 2 },
+      { date: '2026-06-08', count: 5 },
+      { date: '2026-06-10', count: 4 },
+      { date: '2026-06-12', count: 3 },
+      { date: '2026-06-15', count: 4 },
+    ],
+  },
+  2: {
+    total_students:    8,
+    evaluated:         3,
+    not_yet:           5,
+    total_teachers:    2,
+    total_submissions: 3,
+    by_department: [
+      { name: 'Information Technology', total: 5, evaluated: 2 },
+      { name: 'Business Administration', total: 3, evaluated: 1 },
+    ],
+    by_teacher: [
+      { name: 'Ms. Rowena Bautista', subject: 'Peer', total: 8, evaluated: 3 },
+    ],
+    daily_trend: [
+      { date: '2026-06-16', count: 1 },
+      { date: '2026-06-17', count: 2 },
+    ],
+  },
 }

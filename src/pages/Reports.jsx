@@ -1,197 +1,261 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  getReports, getEvaluationPeriods, getUsers, getDepartments,
-  generateIndividualReport, generateDepartmentReport, getMyReports
-} from '../lib/mockApi'
+import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
-import toast from 'react-hot-toast'
-import { SparklesIcon } from '@heroicons/react/24/outline'
+import { ChartBarIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import StarRatingFilter from '../components/StarRatingFilter'
 
 export default function Reports() {
-  const { can } = useAuth()
-  const [reports, setReports] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { user } = useAuth()
   const [periods, setPeriods] = useState([])
-  const [teachers, setTeachers] = useState([])
   const [departments, setDepartments] = useState([])
-  const [genModal, setGenModal] = useState(null)
-  const [genForm, setGenForm] = useState({ period_id: '', teacher_id: '', department_id: '' })
-  const [generating, setGenerating] = useState(false)
-
-  const load = () => {
-    setLoading(true)
-    getReports().then(r => setReports(r.data)).finally(() => setLoading(false))
-  }
+  const [teachers, setTeachers] = useState([])
+  const [filteredTeachers, setFilteredTeachers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedPeriod, setSelectedPeriod] = useState('')
+  const [selectedDepartment, setSelectedDepartment] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedTeacher, setSelectedTeacher] = useState('')
+  const [viewMode, setViewMode] = useState('list') // 'list' or 'stars'
 
   useEffect(() => {
-    load()
-    getEvaluationPeriods().then(r => setPeriods(r.data))
-    getUsers({ role: 'teacher' }).then(r => setTeachers(r.data.data || []))
-    getDepartments().then(r => setDepartments(r.data))
+    const loadData = async () => {
+      try {
+        const periodsRes = await api.get('/evaluations/periods')
+        setPeriods(periodsRes.data || [])
+      } catch (err) {
+        console.error('Error loading periods:', err)
+        setPeriods([])
+      }
+
+      try {
+        const deptsRes = await api.get('/departments')
+        setDepartments(deptsRes.data || [])
+      } catch (err) {
+        console.error('Error loading departments:', err)
+        setDepartments([])
+      }
+
+      try {
+        const usersRes = await api.get('/users', { params: { role: 'teacher' } })
+        const teacherData = usersRes.data?.users || usersRes.data?.data || usersRes.data || []
+        setTeachers(Array.isArray(teacherData) ? teacherData : [])
+        setFilteredTeachers(Array.isArray(teacherData) ? teacherData : [])
+      } catch (err) {
+        console.error('Error loading teachers:', err)
+        setTeachers([])
+        setFilteredTeachers([])
+      }
+
+      setLoading(false)
+    }
+
+    loadData()
   }, [])
 
-  const generate = async () => {
-    setGenerating(true)
-    try {
-      const payload = genModal.type === 'individual'
-        ? { period_id: parseInt(genForm.period_id), teacher_id: parseInt(genForm.teacher_id) }
-        : { period_id: parseInt(genForm.period_id), department_id: parseInt(genForm.department_id) }
+  // Filter teachers by department and search query
+  useEffect(() => {
+    let filtered = teachers
 
-      if (genModal.type === 'individual') {
-        await generateIndividualReport(payload)
-      } else {
-        await generateDepartmentReport(payload)
-      }
-      toast.success('Report generated successfully!')
-      setGenModal(null)
-      load()
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Generation failed')
-    } finally { setGenerating(false) }
+    // Filter by department
+    if (selectedDepartment) {
+      filtered = filtered.filter(t => t.department === selectedDepartment)
+    }
+
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(t => 
+        t.name?.toLowerCase().includes(query) ||
+        t.department?.toLowerCase().includes(query) ||
+        t.email?.toLowerCase().includes(query)
+      )
+    }
+
+    setFilteredTeachers(filtered)
+  }, [selectedDepartment, searchQuery, teachers])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1>View Reports</h1>
+          <p className="text-gray-500 text-sm">
+            View teacher performance scores, ratings, and student feedback
+          </p>
+        </div>
+        <div className="card text-center py-8 text-gray-400">Loading...</div>
+      </div>
+    )
   }
-
-  const set = k => e => setGenForm(f => ({ ...f, [k]: e.target.value }))
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between">
         <div>
-          <h1>Narrative Reports</h1>
-          <p className="text-gray-500 text-sm">AI-generated evaluation reports per faculty and department</p>
+          <h1>View Reports</h1>
+          <p className="text-gray-500 text-sm">
+            View teacher performance scores, ratings, and student feedback
+          </p>
         </div>
-        {can('guidance','admin','staff','president','vp') && (
+        {selectedPeriod && (
           <div className="flex gap-2">
-            <button onClick={() => setGenModal({ type: 'individual' })} className="btn-primary flex items-center gap-2 text-sm">
-              <SparklesIcon className="w-4 h-4" /> Individual Report
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                viewMode === 'list'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              📋 List View
             </button>
-            <button onClick={() => setGenModal({ type: 'department' })} className="btn-secondary flex items-center gap-2 text-sm">
-              <SparklesIcon className="w-4 h-4" /> Department Report
+            <button
+              onClick={() => setViewMode('stars')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                viewMode === 'stars'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              ⭐ Star Ratings
             </button>
           </div>
         )}
       </div>
 
-      {can('teacher') && <TeacherReports />}
+      <div className="card space-y-4">
+        <div>
+          <h2>Select Report Criteria</h2>
+          <p className="text-sm text-gray-600">Choose evaluation period, filter by department, and search for a teacher</p>
+        </div>
+        
+        {/* Evaluation Period */}
+        <div>
+          <label className="label">Evaluation Period *</label>
+          <select 
+            className="input" 
+            value={selectedPeriod} 
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+          >
+            <option value="">Select period...</option>
+            {periods.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.title} ({p.semester} {p.school_year})
+              </option>
+            ))}
+          </select>
+        </div>
 
-      {can('guidance','admin','staff','president','vp') && (
-        loading ? (
-          <div className="text-center py-12 text-gray-400">Loading reports...</div>
-        ) : reports.length === 0 ? (
-          <div className="card text-center py-12">
-            <SparklesIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No reports generated yet.</p>
-            <p className="text-gray-400 text-sm mt-1">Use the buttons above to generate AI-powered narrative reports.</p>
+        {/* Show Star Rating View or List View based on toggle */}
+        {viewMode === 'stars' && selectedPeriod ? (
+          <div className="pt-4">
+            <p className="text-sm text-gray-600 mb-4">
+              Click on any teacher card to view detailed ratings and comments
+            </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {reports.map(r => (
-              <div key={r.id} className="card flex items-center justify-between flex-wrap gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      r.report_type === 'individual' ? 'bg-primary-100 text-primary-700' : 'bg-primary-700 text-white'
-                    }`}>
-                      {r.report_type}
-                    </span>
-                    <p className="font-semibold text-gray-800">
-                      {r.report_type === 'individual' ? r.teacher_name : r.department_name}
-                    </p>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-0.5">{r.period_title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Avg: <strong>{parseFloat(r.average_score || 0).toFixed(2)}/5.00</strong> · {r.total_evaluations} evaluations · Generated {r.generated_at?.slice(0,10)}
-                  </p>
-                </div>
-                <Link to={`/reports/${r.id}`} className="btn-secondary text-sm">View Report</Link>
-              </div>
-            ))}
-          </div>
-        )
-      )}
-
-      {genModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <h2 className="flex items-center gap-2">
-              <SparklesIcon className="w-5 h-5 text-primary-600" />
-              Generate {genModal.type === 'individual' ? 'Individual Faculty' : 'Department'} Report
-            </h2>
-            <p className="text-sm text-gray-500">
-              The AI will analyze evaluation data and generate a comprehensive narrative report.
-            </p>
+          <>
+            {/* Department Filter */}
             <div>
-              <label className="label">Evaluation Period *</label>
-              <select className="input" value={genForm.period_id} onChange={set('period_id')} required>
-                <option value="">Select period...</option>
-                {periods.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+              <label className="label">Filter by Department (Optional)</label>
+              <select 
+                className="input" 
+                value={selectedDepartment} 
+                onChange={(e) => {
+                  setSelectedDepartment(e.target.value)
+                  setSelectedTeacher('') // Reset teacher selection when department changes
+                }}
+              >
+                <option value="">All Departments</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.name}>
+                    {d.name}
+                  </option>
+                ))}
               </select>
             </div>
-            {genModal.type === 'individual' ? (
-              <div>
-                <label className="label">Teacher *</label>
-                <select className="input" value={genForm.teacher_id} onChange={set('teacher_id')} required>
-                  <option value="">Select teacher...</option>
-                  {teachers.map(t => <option key={t.id} value={t.id}>{t.name} ({t.department})</option>)}
-                </select>
+
+            {/* Search Box */}
+            <div>
+              <label className="label">Search Teacher</label>
+              <div className="relative">
+                <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  className="input pl-10"
+                  placeholder="Search by name, department, or email..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setSelectedTeacher('') // Reset teacher selection when searching
+                  }}
+                />
               </div>
-            ) : (
-              <div>
-                <label className="label">Department *</label>
-                <select className="input" value={genForm.department_id} onChange={set('department_id')} required>
-                  <option value="">Select department...</option>
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-              🎭 Demo mode: Report will be generated with sample AI narrative data.
             </div>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setGenModal(null)} className="btn-secondary">Cancel</button>
-              <button
-                onClick={generate}
-                disabled={generating || !genForm.period_id || (genModal.type === 'individual' ? !genForm.teacher_id : !genForm.department_id)}
-                className="btn-primary flex items-center gap-2">
-                {generating ? (
-                  <><span className="animate-spin">⚙</span> Generating...</>
-                ) : (
-                  <><SparklesIcon className="w-4 h-4" /> Generate</>
+
+            {/* Teacher List */}
+            <div>
+              <label className="label">
+                Select Teacher * 
+                {filteredTeachers.length > 0 && (
+                  <span className="text-gray-400 font-normal ml-2">
+                    ({filteredTeachers.length} {filteredTeachers.length === 1 ? 'teacher' : 'teachers'} found)
+                  </span>
                 )}
-              </button>
+              </label>
+              <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                {filteredTeachers.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 text-sm">
+                    No teachers found matching your criteria
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {filteredTeachers.map(t => (
+                      <label
+                        key={t.id}
+                        className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors ${
+                          selectedTeacher === t.id.toString() ? 'bg-primary-50 border-l-4 border-primary-600' : ''
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="teacher"
+                          value={t.id}
+                          checked={selectedTeacher === t.id.toString()}
+                          onChange={(e) => setSelectedTeacher(e.target.value)}
+                          className="w-4 h-4 text-primary-600"
+                        />
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-800">{t.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {t.department || 'No Department'} {t.email && `• ${t.email}`}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+
+            {/* View Report Button */}
+            {selectedPeriod && selectedTeacher && (
+              <Link 
+                to={`/reports/view?period=${selectedPeriod}&teacher=${selectedTeacher}`}
+                className="btn-primary inline-flex items-center gap-2"
+              >
+                <ChartBarIcon className="w-5 h-5" /> View Report
+              </Link>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Star Rating Filter View */}
+      {viewMode === 'stars' && selectedPeriod && (
+        <StarRatingFilter periodId={selectedPeriod} />
       )}
-    </div>
-  )
-}
-
-function TeacherReports() {
-  const [reports, setReports] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    getMyReports().then(r => setReports(r.data)).finally(() => setLoading(false))
-  }, [])
-
-  if (loading) return <div className="text-center py-4 text-gray-400 text-sm">Loading your reports...</div>
-  if (reports.length === 0)
-    return <div className="card text-center py-8 text-gray-400">No reports available for you yet.</div>
-
-  return (
-    <div className="space-y-3">
-      <h2>My Performance Reports</h2>
-      {reports.map(r => (
-        <div key={r.id} className="card flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <p className="font-semibold text-gray-800">{r.period_title}</p>
-            <p className="text-sm text-gray-500">{r.semester} · S.Y. {r.school_year}</p>
-            <p className="text-xs text-gray-400">Avg: <strong>{parseFloat(r.average_score || 0).toFixed(2)}/5.00</strong> · Generated {r.generated_at?.slice(0,10)}</p>
-          </div>
-          <Link to={`/reports/${r.id}`} className="btn-secondary text-sm">View Report</Link>
-        </div>
-      ))}
     </div>
   )
 }

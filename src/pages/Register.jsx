@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { register } from '../lib/mockApi'
+import api from '../lib/api'
 import toast from 'react-hot-toast'
 import { AcademicCapIcon } from '@heroicons/react/24/outline'
 
@@ -13,7 +13,7 @@ export default function Register() {
     e.preventDefault()
     setLoading(true)
     try {
-      await register(form)
+      await api.post('/auth/register', form)
       toast.success('Registered successfully! Please login.')
       navigate('/login')
     } catch (err) {

@@ -1,25 +1,24 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { getPendingApprovals, reviewQuestionnaire } from '../lib/mockApi'
+import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import {
-  CheckIcon, XMarkIcon, ArrowPathIcon,
-  ClockIcon, ChevronDownIcon, ChevronUpIcon
+  CheckIcon, XMarkIcon, ArrowPathIcon, ClockIcon,
+  ClipboardDocumentListIcon, ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 import ApprovalTimeline from '../components/ApprovalTimeline'
+import ReviewModal from '../components/ReviewModal'
 
 const STATUS_META = {
   draft:               { label: 'Draft',              color: 'bg-gray-100 text-gray-600' },
-  pending_dept:        { label: 'Pending Dept Review', color: 'bg-amber-100 text-amber-700' },
+  pending_dept:        { label: 'Pending Dept',        color: 'bg-amber-100 text-amber-700' },
   dept_approved:       { label: 'Dept Approved',       color: 'bg-primary-100 text-primary-700' },
-  pending_vp:          { label: 'Pending VP Review',   color: 'bg-orange-100 text-orange-700' },
+  pending_vp:          { label: 'Pending VP',          color: 'bg-orange-100 text-orange-700' },
   vp_approved:         { label: 'VP Approved',         color: 'bg-primary-200 text-primary-800' },
   pending_president:   { label: 'Pending President',   color: 'bg-primary-800 text-white' },
   fully_approved:      { label: 'Fully Approved',      color: 'bg-emerald-100 text-emerald-700' },
   rejected:            { label: 'Rejected',            color: 'bg-red-100 text-red-700' },
   revision_requested:  { label: 'Revision Requested',  color: 'bg-amber-100 text-amber-700' },
-  archived:            { label: 'Archived',            color: 'bg-gray-100 text-gray-500' },
 }
 
 const LEVEL_LABEL = {
@@ -28,185 +27,335 @@ const LEVEL_LABEL = {
   pending_president: 'President (Final)',
 }
 
-const actionConfig = {
-  approved:           { label: 'Approve',          btnClass: 'btn-success',  icon: CheckIcon },
-  revision_requested: { label: 'Request Revision', btnClass: 'btn-warning',  icon: ArrowPathIcon },
-  rejected:           { label: 'Reject',           btnClass: 'btn-danger',   icon: XMarkIcon },
+const SOURCE_CFG = {
+  manual:       { label: 'Manual',       color: 'bg-gray-100 text-gray-600',      icon: '✏️' },
+  ai_generated: { label: 'AI Generated', color: 'bg-primary-100 text-primary-700', icon: '🤖' },
+  ai_edited:    { label: 'AI Edited',    color: 'bg-primary-200 text-primary-800', icon: '🤖✏️' },
+}
+
+const ACTION_STYLE = {
+  approved:           { bg: 'bg-green-50 border-green-200',   text: 'text-green-700',  icon: '✅', label: 'Approved' },
+  rejected:           { bg: 'bg-red-50 border-red-200',       text: 'text-red-700',    icon: '❌', label: 'Rejected' },
+  revision_requested: { bg: 'bg-yellow-50 border-yellow-200', text: 'text-yellow-700', icon: '🔄', label: 'Revision Requested' },
+  submitted:          { bg: 'bg-blue-50 border-blue-200',     text: 'text-blue-700',   icon: '📤', label: 'Submitted' },
 }
 
 export default function ApprovalQueue() {
   const { user } = useAuth()
-  const [pending, setPending]   = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [expanded, setExpanded] = useState({})
-  const [modal, setModal]       = useState(null)
-  const [comments, setComments] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [pending, setPending]             = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [selected, setSelected]           = useState(null)
+  const [fullDetail, setFullDetail]       = useState(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [activeTab, setActiveTab]         = useState('questions')
+  const [modal, setModal]                 = useState(null)
+  const [comments, setComments]           = useState('')
+  const [submitting, setSubmitting]       = useState(false)
 
-  const load = () => {
+  const loadQueue = () => {
     setLoading(true)
-    getPendingApprovals()
-      .then(r => setPending(r.data))
+    api.get('/questionnaires/approval/pending')
+      .then(r => {
+        setPending(r.data)
+        if (r.data.length > 0) selectItem(r.data[0].id)
+      })
       .catch(() => toast.error('Failed to load approval queue'))
       .finally(() => setLoading(false))
   }
-  useEffect(load, [])
+  useEffect(loadQueue, [])
 
-  const toggleExpand = id =>
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
+  const selectItem = async (id) => {
+    setSelected(id)
+    setActiveTab('questions')
+    setDetailLoading(true)
+    try {
+      const r = await api.get(`/questionnaires/${id}`)
+      setFullDetail(r.data)
+    } catch {
+      setFullDetail(null)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
 
-  const openModal = (id, action) => { setModal({ id, action }); setComments('') }
+  const openModal  = (id, action) => { setModal({ id, action }); setComments('') }
   const closeModal = () => { setModal(null); setComments('') }
 
   const submitDecision = async () => {
     if (!comments.trim()) return toast.error('Comments are required')
     setSubmitting(true)
     try {
-      await reviewQuestionnaire(modal.id, { action: modal.action, comments })
+      await api.post(`/questionnaires/${modal.id}/review`, { action: modal.action, comments })
       const labels = { approved: 'approved', rejected: 'rejected', revision_requested: 'returned for revision' }
       toast.success(`Questionnaire ${labels[modal.action]}`)
       closeModal()
-      load()
+      setFullDetail(null)
+      loadQueue()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed')
     } finally { setSubmitting(false) }
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1>Approval Queue</h1>
-        <p className="text-gray-500 text-sm">
-          Multi-level questionnaire approval: Department → Vice President → President
-        </p>
-      </div>
+  const selectedItem = pending.find(p => p.id === selected)
+  const questions    = fullDetail?.questions        || []
+  const history      = fullDetail?.approval_history || selectedItem?.approval_history || []
 
-      <div className="bg-primary-50 border border-primary-200 rounded-xl p-4 text-sm text-primary-900">
-        <p className="font-semibold mb-1">📋 Approval Workflow</p>
-        <div className="flex items-center gap-2 flex-wrap text-xs">
-          <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">1. Department Review</span>
-          <span className="text-primary-400">→</span>
-          <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-medium">2. VP Review</span>
-          <span className="text-primary-400">→</span>
-          <span className="bg-primary-800 text-white px-2 py-1 rounded-full font-medium">3. President Final</span>
-          <span className="text-primary-400">→</span>
-          <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">✅ Fully Approved</span>
+  if (loading) return <div className="text-center py-16 text-gray-400">Loading…</div>
+
+  if (pending.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1>Approval Queue</h1>
+          <p className="text-gray-500 text-sm">Multi-level questionnaire approval: Department → Vice President → President</p>
         </div>
-        <p className="text-xs mt-2 text-primary-700">
-          Your role ({user?.role?.replace('_',' ')}) can act on items shown below.
-        </p>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading…</div>
-      ) : pending.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-green-600 font-medium text-lg">✅ All caught up!</p>
+        <div className="card text-center py-16">
+          <div className="text-5xl mb-3">✅</div>
+          <p className="text-green-600 font-semibold text-lg">All caught up!</p>
           <p className="text-gray-400 text-sm mt-1">No questionnaires pending your review.</p>
         </div>
-      ) : (
-        <div className="space-y-4">
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1>Approval Queue</h1>
+          <p className="text-gray-500 text-sm">
+            Role: <strong className="capitalize">{user?.role?.replace('_',' ')}</strong> · {pending.length} item{pending.length !== 1 ? 's' : ''} pending
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs flex-wrap">
+          {[
+            { label: '1. Department', color: 'bg-amber-100 text-amber-700' },
+            { label: '2. VP Review',  color: 'bg-orange-100 text-orange-700' },
+            { label: '3. President',  color: 'bg-primary-800 text-white' },
+            { label: '✅ Deployed',   color: 'bg-emerald-100 text-emerald-700' },
+          ].map((s, i, arr) => (
+            <span key={s.label} className="flex items-center gap-1.5">
+              <span className={`px-2.5 py-1 rounded-full font-medium ${s.color}`}>{s.label}</span>
+              {i < arr.length - 1 && <span className="text-gray-300">→</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 2-column layout */}
+      <div className="flex gap-4 items-start" style={{ minHeight: '72vh' }}>
+
+        {/* Left: queue list */}
+        <div className="w-64 flex-shrink-0 space-y-2">
           {pending.map(item => {
             const sm = STATUS_META[item.status] || STATUS_META.draft
-            const isExpanded = expanded[item.id]
+            const isActive = item.id === selected
             return (
-              <div key={item.id} className="card space-y-0 p-0 overflow-hidden">
-                <div className="p-5 space-y-3">
-                  <div className="flex items-start justify-between flex-wrap gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <Link to={`/questionnaires/${item.id}`}
-                          className="font-semibold text-gray-800 hover:text-primary-700 text-base">
-                          {item.title}
-                        </Link>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sm.color}`}>
-                          {sm.label}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-500">
-                        {item.semester} Semester · S.Y. {item.school_year}
-                        {item.created_by_name && <span className="ml-2">· By <strong>{item.created_by_name}</strong></span>}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                        <ClockIcon className="w-3 h-3" />
-                        Awaiting <strong className="ml-0.5">{LEVEL_LABEL[item.status] || 'Review'}</strong> · {item.question_count ?? 0} questions
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {Object.entries(actionConfig).map(([action, cfg]) => {
-                        const Icon = cfg.icon
-                        return (
-                          <button key={action} onClick={() => openModal(item.id, action)}
-                            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${cfg.btnClass}`}>
-                            <Icon className="w-4 h-4" />
-                            {cfg.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  <button onClick={() => toggleExpand(item.id)}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-primary-700 transition-colors">
-                    {isExpanded ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />}
-                    {isExpanded ? 'Hide approval history' : 'Show approval history'}
-                  </button>
+              <button key={item.id} onClick={() => selectItem(item.id)}
+                className={`w-full text-left p-3.5 rounded-xl border transition-all ${
+                  isActive
+                    ? 'bg-primary-50 border-primary-300 shadow-sm'
+                    : 'bg-white border-gray-200 hover:border-primary-200 hover:bg-gray-50'
+                }`}>
+                <p className={`text-sm font-semibold leading-snug line-clamp-2 mb-1 ${isActive ? 'text-primary-800' : 'text-gray-800'}`}>
+                  {item.title}
+                </p>
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${sm.color}`}>{sm.label}</span>
+                  <span className="text-xs text-gray-400">{item.question_count ?? 0}q</span>
                 </div>
-                {isExpanded && (
-                  <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/50">
-                    <ApprovalTimeline
-                      status={item.status}
-                      currentLevel={item.current_level}
-                      approvalHistory={item.approval_history || []}
-                    />
-                    <div className="mt-3 flex justify-end">
-                      <Link to={`/questionnaires/${item.id}`} className="text-sm text-primary-700 hover:underline">
-                        View full questionnaire →
-                      </Link>
-                    </div>
-                  </div>
-                )}
-              </div>
+                <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                  <ClockIcon className="w-3 h-3" />
+                  {LEVEL_LABEL[item.status] || 'Review'}
+                </p>
+              </button>
             )
           })}
         </div>
-      )}
 
-      {modal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <h2 className={
-              modal.action === 'approved' ? 'text-green-700 font-semibold' :
-              modal.action === 'revision_requested' ? 'text-amber-600 font-semibold' :
-              'text-red-700 font-semibold'
-            }>
-              {modal.action === 'approved' ? '✅ Approve Questionnaire' :
-               modal.action === 'revision_requested' ? '🔄 Request Revision' :
-               '❌ Reject Questionnaire'}
-            </h2>
-            <div>
-              <label className="label">
-                {modal.action === 'approved' ? 'Approval Comments *' :
-                 modal.action === 'revision_requested' ? 'Revision Instructions *' : 'Reason for Rejection *'}
-              </label>
-              <textarea className="input" rows={4} autoFocus
-                placeholder="Add your comments here…"
-                value={comments} onChange={e => setComments(e.target.value)} />
-              <p className="text-xs text-gray-400 mt-1">Comments are required and visible in approval history.</p>
+        {/* Right: detail panel */}
+        {selectedItem && (
+          <div className="flex-1 min-w-0 bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col overflow-hidden">
+
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-bold text-gray-800 leading-tight">{selectedItem.title}</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    <span className="capitalize">{selectedItem.evaluator_type}</span> evaluation
+                    · {selectedItem.semester} Semester · S.Y. {selectedItem.school_year}
+                    {selectedItem.created_by_name && (
+                      <span className="ml-1.5">· By <strong>{selectedItem.created_by_name}</strong></span>
+                    )}
+                  </p>
+                  {fullDetail?.source_summary && (
+                    <div className="flex gap-1.5 flex-wrap mt-1.5">
+                      {Object.entries(fullDetail.source_summary).map(([src, n]) => {
+                        const cfg = SOURCE_CFG[src] || SOURCE_CFG.manual
+                        return (
+                          <span key={src} className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>
+                            {cfg.icon} {n} {cfg.label}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                {/* Action buttons */}
+                <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                  <button onClick={() => openModal(selectedItem.id, 'approved')}
+                    className="btn-success flex items-center gap-1.5 text-sm">
+                    <CheckIcon className="w-4 h-4" /> Approve
+                  </button>
+                  <button onClick={() => openModal(selectedItem.id, 'revision_requested')}
+                    className="btn-warning flex items-center gap-1.5 text-sm">
+                    <ArrowPathIcon className="w-4 h-4" /> Revision
+                  </button>
+                  <button onClick={() => openModal(selectedItem.id, 'rejected')}
+                    className="btn-danger flex items-center gap-1.5 text-sm">
+                    <XMarkIcon className="w-4 h-4" /> Reject
+                  </button>
+                </div>
+              </div>
+
+              {/* Approval progress — always visible */}
+              <div className="mt-4">
+                <ApprovalTimeline
+                  status={selectedItem.status}
+                  currentLevel={selectedItem.current_level}
+                  approvalHistory={history}
+                />
+              </div>
             </div>
-            <div className="flex gap-3 justify-end pt-2">
-              <button onClick={closeModal} className="btn-secondary" disabled={submitting}>Cancel</button>
-              <button onClick={submitDecision} disabled={submitting || !comments.trim()}
-                className={
-                  modal.action === 'approved' ? 'btn-success' :
-                  modal.action === 'revision_requested' ? 'btn-warning' : 'btn-danger'
-                }>
-                {submitting ? 'Submitting…' :
-                  modal.action === 'approved' ? 'Confirm Approval' :
-                  modal.action === 'revision_requested' ? 'Send for Revision' : 'Confirm Rejection'}
-              </button>
+
+            {/* Tabs */}
+            <div className="flex border-b border-gray-100 bg-white">
+              {[
+                { key: 'questions', label: 'Questions',        Icon: ClipboardDocumentListIcon, count: questions.length || selectedItem.question_count || 0 },
+                { key: 'history',   label: 'Approval History', Icon: ChatBubbleLeftRightIcon,   count: history.length },
+              ].map(tab => (
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.key
+                      ? 'border-primary-600 text-primary-700 bg-primary-50/40'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}>
+                  <tab.Icon className="w-4 h-4" />
+                  {tab.label}
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                    activeTab === tab.key ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div className="flex-1 overflow-y-auto p-5">
+
+              {/* Questions */}
+              {activeTab === 'questions' && (
+                detailLoading ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3" />
+                    <p className="text-sm">Loading questions…</p>
+                  </div>
+                ) : questions.length === 0 ? (
+                  <div className="text-center py-12 text-gray-300">
+                    <ClipboardDocumentListIcon className="w-10 h-10 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">No questions found.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {questions.map((q, i) => {
+                      const src = q.source || 'manual'
+                      const cfg = SOURCE_CFG[src] || SOURCE_CFG.manual
+                      return (
+                        <div key={q.id ?? i}
+                          className="flex gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:border-gray-200 transition-colors">
+                          <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                            {i + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-800 font-medium leading-snug">{q.text}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>
+                                {cfg.icon} {cfg.label}
+                              </span>
+                              <span className="text-xs text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                                {q.type === 'rating' ? '⭐ Rating 1–5' : '📝 Open-ended'}
+                              </span>
+                              {q.category && (
+                                <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+                                  {q.category}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              )}
+
+              {/* History */}
+              {activeTab === 'history' && (
+                history.length === 0 ? (
+                  <div className="text-center py-12 text-gray-300">
+                    <ChatBubbleLeftRightIcon className="w-10 h-10 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">No approval history yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {[...history].reverse().map((entry, i) => {
+                      const style = ACTION_STYLE[entry.action] || ACTION_STYLE.submitted
+                      const levelLabel = { dept:'Department', vp:'Vice President', president:'President' }[entry.level] || entry.level
+                      return (
+                        <div key={entry.id ?? i} className={`rounded-xl border p-4 flex gap-3 ${style.bg}`}>
+                          <span className="text-lg flex-shrink-0">{style.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className={`text-xs font-semibold ${style.text}`}>{style.label}</span>
+                              <span className="text-xs bg-white/70 text-gray-600 px-2 py-0.5 rounded-full">{levelLabel}</span>
+                            </div>
+                            <p className="text-sm font-medium text-gray-800">
+                              {entry.actor_name}
+                              <span className="text-gray-500 font-normal ml-1 text-xs capitalize">
+                                ({entry.actor_role?.replace('_',' ')})
+                              </span>
+                            </p>
+                            {entry.comments && (
+                              <p className="text-sm text-gray-600 mt-1 italic">"{entry.comments}"</p>
+                            )}
+                            <p className="text-xs text-gray-400 mt-1">
+                              {entry.acted_at?.slice(0,16).replace('T',' ')}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              )}
             </div>
           </div>
-        </div>
+        )}
+      </div>
+
+      {modal && (
+        <ReviewModal
+          action={modal.action}
+          actingLevel={null}
+          comments={comments}
+          onChange={setComments}
+          onSubmit={submitDecision}
+          onClose={closeModal}
+          saving={submitting}
+        />
       )}
     </div>
   )

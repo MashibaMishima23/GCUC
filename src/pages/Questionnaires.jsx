@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getQuestionnaires, submitQuestionnaireForApproval } from '../lib/mockApi'
+import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import { PlusIcon, PaperAirplaneIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 
+// All possible statuses in the new workflow
 const ALL_STATUSES = [
   { value: '',                   label: 'All' },
   { value: 'draft',              label: 'Draft' },
@@ -42,10 +43,12 @@ const STATUS_LABEL = {
   rejected:            'Rejected ❌',
   revision_requested:  'Revision Needed 🔄',
   archived:            'Archived',
+  // legacy
   pending_approval:    'Pending (legacy)',
   approved:            'Approved (legacy)',
 }
 
+// Determine what pipeline stage icon to show
 const PIPELINE_ICON = {
   draft:               '📝',
   pending_dept:        '🏢',
@@ -59,7 +62,7 @@ const PIPELINE_ICON = {
 }
 
 export default function Questionnaires() {
-  const { can } = useAuth()
+  const { user, can } = useAuth()
   const [items, setItems]     = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter]   = useState('')
@@ -69,7 +72,9 @@ export default function Questionnaires() {
     setLoading(true)
     const params = {}
     if (filter) params.status = filter
-    getQuestionnaires(params)
+    // non-admin roles only see their own questionnaires by default
+    if (!can('guidance','admin','president','vp')) params.my = '1'
+    api.get('/questionnaires', { params })
       .then(r => setItems(r.data))
       .catch(() => toast.error('Failed to load questionnaires'))
       .finally(() => setLoading(false))
@@ -79,7 +84,7 @@ export default function Questionnaires() {
 
   const submitApproval = async id => {
     try {
-      await submitQuestionnaireForApproval(id)
+      await api.post(`/questionnaires/${id}/submit-approval`)
       toast.success('Submitted for Department approval')
       load()
     } catch (err) {
@@ -104,6 +109,7 @@ export default function Questionnaires() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1>Questionnaires</h1>
@@ -118,6 +124,7 @@ export default function Questionnaires() {
         )}
       </div>
 
+      {/* Approval pipeline legend */}
       {can('guidance','admin','staff','department_head','vp','president') && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-2 flex-wrap text-xs text-gray-600">
           <span className="font-medium text-gray-700 mr-1">Approval Chain:</span>
@@ -131,6 +138,7 @@ export default function Questionnaires() {
         </div>
       )}
 
+      {/* Filters */}
       <div className="flex gap-3 flex-wrap items-center">
         <div className="relative min-w-52 flex-1">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -151,6 +159,7 @@ export default function Questionnaires() {
         </div>
       </div>
 
+      {/* List */}
       {loading ? (
         <div className="text-center py-12 text-gray-400">Loading…</div>
       ) : filtered.length === 0 ? (
