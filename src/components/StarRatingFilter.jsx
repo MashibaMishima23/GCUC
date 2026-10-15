@@ -253,7 +253,7 @@ export default function StarRatingFilter({ periodId, evaluatorType = 'student' }
     )
   }
 
-  if (!data || data.star_counts.all === 0) {
+  if (!data?.star_counts || !Array.isArray(data.teachers) || data.star_counts.all === 0) {
     return (
       <div className="card text-center py-8 text-gray-400">
         <p>No evaluation data available for this period</p>

@@ -1,4 +1,5 @@
 import * as mock from './mockApi'
+import { getMockStarRatings, getMockTeacherRatingDetails } from './mockRatings'
 
 let archiveHistory = []
 let archiveFiles = []
@@ -141,8 +142,8 @@ async function request(method, url, body, config = {}) {
 		const report = response.data.find(item => item.period_id == parts[2] && item.teacher_id == parts[3])
 		return result(report || {})
 	}
-	if (parts[0] === 'reports' && parts[1] === 'teacher-detail' && method === 'GET') return result({ teacher: {}, evaluations: [], summary: {} })
-	if (parts[0] === 'reports' && parts[1] === 'star-ratings' && method === 'GET') return result([])
+	if (parts[0] === 'reports' && parts[1] === 'teacher-detail' && method === 'GET') return result(getMockTeacherRatingDetails(parts[2], parts[3]))
+	if (parts[0] === 'reports' && parts[1] === 'star-ratings' && method === 'GET') return result(getMockStarRatings(parts[2], params.star_filter))
 	if (parts[0] === 'reports' && parts[1] && method === 'GET') return mock.getReport(id)
 
 	if (path === 'notifications' && method === 'GET') return mock.getNotifications()
